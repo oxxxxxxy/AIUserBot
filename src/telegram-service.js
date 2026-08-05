@@ -118,7 +118,10 @@ class TelegramService {
       const maxChars = Number(config.chats.maxContextChars) || 60000;
       const history = this.boundHistory(items, maxChars);
       this.emit("log", { level: "info", message: `Диалог ${peerKey}: модели передано ${history.length} сообщений из истории` });
-      const answer = await requestCompletion(config.llm, buildMessages(config, history)); if (!answer) return;
+      const messages = buildMessages(config, history);
+      const system = messages.find((item) => item.role === "system")?.content || "";
+      this.emit("log", { level: "info", message: `System prompt дословно: ${JSON.stringify(system)}` });
+      const answer = await requestCompletion(config.llm, messages); if (!answer) return;
       this.sendingPeers.add(peerKey); await this.client.sendMessage(peer, { message: answer }); setTimeout(() => this.sendingPeers.delete(peerKey), 2000);
       this.emit("log", { level: "success", message: `Автоответ отправлен в диалог ${peerKey}` });
     } catch (error) {
