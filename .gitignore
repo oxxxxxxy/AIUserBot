@@ -1,0 +1,8 @@
+node_modules/
+.env
+*.session
+*.session-journal
+npm-debug.log*
+release/
+coverage/
+.DS_Store

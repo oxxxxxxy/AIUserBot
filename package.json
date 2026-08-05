@@ -1,0 +1,54 @@
+{
+  "name": "ai-userbot",
+  "version": "0.1.0",
+  "description": "Telegram business auto-replies powered by a local OmniRoute LLM gateway",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "pack": "electron-builder --dir",
+    "build:win": "electron-builder --win nsis portable"
+  },
+  "dependencies": {
+    "teleproto": "1.228.5"
+  },
+  "devDependencies": {
+    "electron": "43.3.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "ru.aiuserbot.desktop",
+    "productName": "AI UserBot",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "AIUserBot-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "allowScripts": {
+    "electron@43.3.0": true,
+    "electron-winstaller@5.4.0": true,
+    "bufferutil@4.1.0": true,
+    "utf-8-validate@5.0.10": true,
+    "es5-ext@0.10.64": true
+  }
+}

@@ -1,0 +1,18 @@
+let state;
+const $ = (id) => document.getElementById(id);
+function toast(message){const element=$("toast");element.textContent=message;element.classList.add("show");setTimeout(()=>element.classList.remove("show"),2500)}
+function appendLog(entry){const line=document.createElement("div");line.className=`log-entry ${entry.level||"info"}`;line.textContent=`${new Date().toLocaleTimeString()} — ${entry.message}`;$("log").prepend(line);while($("log").children.length>50)$("log").lastChild.remove()}
+function updateStatus(status){const element=$("status");element.classList.toggle("online",Boolean(status.connected));element.querySelector("strong").textContent=status.connected?`Подключён${status.displayName?` · ${status.displayName}`:""}`:"Отключён"}
+function readForm(){return{telegram:{apiId:$("apiId").value.trim(),apiHash:$("apiHash").value.trim(),phone:$("phone").value.trim()},llm:{baseUrl:$("baseUrl").value.trim(),apiKey:$("apiKey").value.trim(),model:$("model").value.trim(),temperature:Number($("temperature").value),maxTokens:Number($("maxTokens").value)},business:{context:$("businessContext").value,instructions:$("instructions").value},automation:{enabled:$("enabled").checked,replyDelaySeconds:Number($("replyDelaySeconds").value),historyLimit:state.config.automation.historyLimit,manualPauseMinutes:Number($("manualPauseMinutes").value)}}}
+function fillForm(c){$("apiId").value=c.telegram.apiId;$("apiHash").value=c.telegram.apiHash;$("phone").value=c.telegram.phone;$("baseUrl").value=c.llm.baseUrl;$("apiKey").value=c.llm.apiKey;$("model").value=c.llm.model;$("temperature").value=c.llm.temperature;$("maxTokens").value=c.llm.maxTokens;$("businessContext").value=c.business.context;$("instructions").value=c.business.instructions;$("enabled").checked=c.automation.enabled;$("replyDelaySeconds").value=c.automation.replyDelaySeconds;$("manualPauseMinutes").value=c.automation.manualPauseMinutes}
+async function save(){state.config=await window.aiUserBot.saveConfig(readForm());toast("Сохранено")}
+async function run(action){try{await action()}catch(error){appendLog({level:"error",message:error.message});toast(error.message)}}
+document.querySelectorAll(".tab").forEach((button)=>button.addEventListener("click",()=>{document.querySelectorAll(".tab,.panel").forEach((element)=>element.classList.remove("active"));button.classList.add("active");$(button.dataset.tab).classList.add("active")}));
+$("saveControl").onclick=()=>run(save);$("saveContext").onclick=()=>run(save);$("saveLlm").onclick=()=>run(save);
+$("saveTelegram").onclick=()=>run(async()=>{await save();appendLog({message:"Подключение к Telegram…"});await window.aiUserBot.connect()});
+$("connect").onclick=()=>run(()=>window.aiUserBot.connect());$("disconnect").onclick=()=>run(()=>window.aiUserBot.disconnect());
+$("logout").onclick=()=>run(async()=>{await window.aiUserBot.logout();toast("Сессия Telegram удалена")});
+$("testLlm").onclick=()=>run(async()=>{await save();$("testResult").textContent="Запрос…";$("testResult").textContent=await window.aiUserBot.testLlm()});
+$("authSubmit").onclick=(event)=>{event.preventDefault();run(async()=>{await window.aiUserBot.submitAuth($("authValue").value);$("authDialog").close()})};
+window.aiUserBot.onEvent(({type,data})=>{if(type==="log")appendLog(data);if(type==="status")updateStatus(data);if(type==="auth-request"){$("authTitle").textContent=data.type==="password"?"Пароль 2FA":"Код Telegram";$("authMessage").textContent=data.message;$("authValue").value="";$("authValue").type=data.type==="password"?"password":"text";$("authDialog").showModal();$("authValue").focus()}});
+window.aiUserBot.getState().then((initial)=>{state=initial;fillForm(state.config);updateStatus(state.status);appendLog({message:"Приложение запущено"})});
