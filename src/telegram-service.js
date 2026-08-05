@@ -34,6 +34,7 @@ class TelegramService {
     this.client.addEventHandler((event) => this.onMessage(event), new NewMessage({}));
     const me = await this.client.getMe(); const displayName = [me.firstName, me.lastName].filter(Boolean).join(" ") || me.username || String(me.id);
     this.emit("status", this.status({ displayName })); this.emit("log", { level: "success", message: `Telegram подключён: ${displayName}` });
+    this.loadChats().then((chats) => this.emit("chats-updated", chats)).catch((error) => this.emit("log", { level: "error", message: `Не удалось загрузить чаты: ${error.message}` }));
     return this.status({ displayName });
   }
   async disconnect() {
@@ -46,8 +47,11 @@ class TelegramService {
   }
   async loadChats() {
     if (!this.connected || !this.client) throw new Error("Сначала подключи Telegram");
-    const dialogs = await this.client.getDialogs({ limit: 250 });
-    const chats = dialogs.filter((dialog) => dialog.isUser && !dialog.entity?.self).map((dialog) => ({
+    const [regular, archived] = await Promise.all([this.client.getDialogs({ limit: 500 }), this.client.getDialogs({ limit: 500, archived: true })]);
+    const dialogs = [...regular, ...archived];
+    const unique = new Map();
+    for (const dialog of dialogs) unique.set(String(dialog.id), dialog);
+    const chats = [...unique.values()].filter((dialog) => (dialog.isUser || dialog.entity?.className === "User") && !dialog.entity?.self).map((dialog) => ({
       id: String(dialog.id),
       title: dialog.title || [dialog.entity?.firstName, dialog.entity?.lastName].filter(Boolean).join(" ") || dialog.entity?.username || String(dialog.id),
       username: dialog.entity?.username || "",
@@ -62,6 +66,14 @@ class TelegramService {
     const known = new Set((config.chats.knownIds || []).map(String));
     if (!known.has(peerKey)) return Boolean(config.chats.allowNewChats);
     return config.chats.mode === "deny" ? !selected.has(peerKey) : selected.has(peerKey);
+  }
+  rememberAllowedNewChat(peerKey, config) {
+    const known = new Set((config.chats.knownIds || []).map(String));
+    if (known.has(peerKey) || !config.chats.allowNewChats) return;
+    known.add(peerKey); config.chats.knownIds = [...known];
+    if (config.chats.mode === "allow") config.chats.selectedIds = [...new Set([...(config.chats.selectedIds || []).map(String), peerKey])];
+    this.saveConfig(config);
+    this.loadChats().then((chats) => this.emit("chats-updated", chats)).catch(() => {});
   }
   boundHistory(items, maxChars) {
     const history = [...items].reverse().map((item) => ({ text: item.message, outgoing: Boolean(item.out) })).filter((item) => String(item.text || "").trim());
@@ -86,7 +98,11 @@ class TelegramService {
       return;
     }
     const config = this.getConfig();
-    if (!config.automation.enabled || !this.isChatAllowed(peerKey, config) || !String(message.message || "").trim() || (this.manualPauses.get(peerKey) || 0) > Date.now()) return;
+    if (!config.automation.enabled) return;
+    if (!this.isChatAllowed(peerKey, config)) { this.emit("log", { level: "info", message: `Диалог ${peerKey}: сообщение пропущено по правилу выбора чатов` }); return; }
+    this.rememberAllowedNewChat(peerKey, config);
+    if (!String(message.message || "").trim()) { this.emit("log", { level: "info", message: `Диалог ${peerKey}: нет текста для ответа` }); return; }
+    if ((this.manualPauses.get(peerKey) || 0) > Date.now()) { this.emit("log", { level: "info", message: `Диалог ${peerKey}: действует пауза после ручного ответа` }); return; }
     clearTimeout(this.pendingReplies.get(peerKey));
     const delay = Math.max(0, Number(config.automation.replyDelaySeconds) || 0) * 1000;
     this.pendingReplies.set(peerKey, setTimeout(() => this.replyToPeer(message.peerId, peerKey), delay));
@@ -96,7 +112,7 @@ class TelegramService {
     this.pendingReplies.delete(peerKey);
     try {
       const config = this.getConfig();
-      if (!config.automation.enabled || (this.manualPauses.get(peerKey) || 0) > Date.now()) return;
+      if (!config.automation.enabled || !this.isChatAllowed(peerKey, config) || (this.manualPauses.get(peerKey) || 0) > Date.now()) return;
       const limit = config.chats.historyAll ? 500 : Math.max(1, Number(config.chats.historyLimit) || 12);
       const items = await this.client.getMessages(peer, { limit });
       const maxChars = Number(config.chats.maxContextChars) || 60000;
