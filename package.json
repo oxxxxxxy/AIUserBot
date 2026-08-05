@@ -11,6 +11,7 @@
     "build:win": "electron-builder --win nsis portable"
   },
   "dependencies": {
+    "omniroute": "^3.8.49",
     "teleproto": "1.228.5"
   },
   "devDependencies": {
@@ -28,6 +29,9 @@
       "src/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "node_modules/**/*"
+    ],
     "win": {
       "target": [
         "nsis",
@@ -44,11 +48,27 @@
   "engines": {
     "node": ">=20"
   },
+  "overrides": {
+    "next": "16.2.11"
+  },
   "allowScripts": {
     "electron@43.3.0": true,
     "electron-winstaller@5.4.0": true,
     "bufferutil@4.1.0": true,
     "utf-8-validate@5.0.10": true,
-    "es5-ext@0.10.64": true
+    "es5-ext@0.10.64": true,
+    "omniroute@3.8.49": true,
+    "keytar@7.9.0": true,
+    "tls-client-node@0.2.0": true,
+    "onnxruntime-node@1.21.0": true,
+    "sharp@0.35.3": true,
+    "sharp@0.34.5": true,
+    "core-js@3.29.1": true,
+    "@parcel/watcher@2.6.0": true,
+    "@swc/core@1.15.47": true,
+    "protobufjs@7.6.5": true,
+    "koffi@2.16.3": true,
+    "esbuild@0.28.1": true,
+    "better-sqlite3@13.0.2": true
   }
 }

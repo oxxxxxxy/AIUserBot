@@ -44,6 +44,25 @@ class TelegramService {
     if (this.client && this.connected) await this.client.invoke(new Api.auth.LogOut());
     await this.disconnect(); const config = this.getConfig(); config.telegram.session = ""; this.saveConfig(config);
   }
+  async loadChats() {
+    if (!this.connected || !this.client) throw new Error("Сначала подключи Telegram");
+    const dialogs = await this.client.getDialogs({ limit: 250 });
+    const chats = dialogs.filter((dialog) => dialog.isUser && !dialog.entity?.self).map((dialog) => ({
+      id: String(dialog.id),
+      title: dialog.title || [dialog.entity?.firstName, dialog.entity?.lastName].filter(Boolean).join(" ") || dialog.entity?.username || String(dialog.id),
+      username: dialog.entity?.username || "",
+    }));
+    const config = this.getConfig();
+    config.chats.knownIds = [...new Set([...(config.chats.knownIds || []), ...chats.map((chat) => chat.id)])];
+    this.saveConfig(config);
+    return chats;
+  }
+  isChatAllowed(peerKey, config) {
+    const selected = new Set((config.chats.selectedIds || []).map(String));
+    const known = new Set((config.chats.knownIds || []).map(String));
+    if (!known.has(peerKey)) return Boolean(config.chats.allowNewChats);
+    return config.chats.mode === "deny" ? !selected.has(peerKey) : selected.has(peerKey);
+  }
   async onMessage(event) {
     const message = event.message;
     if (!message?.peerId || !message.isPrivate) return;
@@ -57,7 +76,7 @@ class TelegramService {
       return;
     }
     const config = this.getConfig();
-    if (!config.automation.enabled || !String(message.message || "").trim() || (this.manualPauses.get(peerKey) || 0) > Date.now()) return;
+    if (!config.automation.enabled || !this.isChatAllowed(peerKey, config) || !String(message.message || "").trim() || (this.manualPauses.get(peerKey) || 0) > Date.now()) return;
     clearTimeout(this.pendingReplies.get(peerKey));
     const delay = Math.max(0, Number(config.automation.replyDelaySeconds) || 0) * 1000;
     this.pendingReplies.set(peerKey, setTimeout(() => this.replyToPeer(message.peerId, peerKey), delay));
@@ -68,8 +87,13 @@ class TelegramService {
     try {
       const config = this.getConfig();
       if (!config.automation.enabled || (this.manualPauses.get(peerKey) || 0) > Date.now()) return;
-      const items = await this.client.getMessages(peer, { limit: Number(config.automation.historyLimit) || 12 });
-      const history = [...items].reverse().map((item) => ({ text: item.message, outgoing: Boolean(item.out) }));
+      const limit = config.chats.historyAll ? 500 : Math.max(1, Number(config.chats.historyLimit) || 12);
+      const items = await this.client.getMessages(peer, { limit });
+      let history = [...items].reverse().map((item) => ({ text: item.message, outgoing: Boolean(item.out) }));
+      const maxChars = Number(config.chats.maxContextChars) || 60000;
+      let used = 0; const bounded = [];
+      for (let index = history.length - 1; index >= 0; index -= 1) { const size = String(history[index].text || "").length; if (bounded.length && used + size > maxChars) break; bounded.unshift(history[index]); used += size; }
+      history = bounded;
       const answer = await requestCompletion(config.llm, buildMessages(config, history)); if (!answer) return;
       this.sendingPeers.add(peerKey); await this.client.sendMessage(peer, { message: answer }); setTimeout(() => this.sendingPeers.delete(peerKey), 2000);
       this.emit("log", { level: "success", message: `Автоответ отправлен в диалог ${peerKey}` });

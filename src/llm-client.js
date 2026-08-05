@@ -7,11 +7,16 @@ function parseSse(text) {
   return result.trim();
 }
 async function requestCompletion(config, messages, fetchImpl = fetch) {
-  const response = await fetchImpl(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST", headers: { "Content-Type": "application/json", ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}) },
-    body: JSON.stringify({ model: config.model, messages, temperature: Number(config.temperature), max_tokens: Number(config.maxTokens), stream: false }),
-    signal: AbortSignal.timeout(60_000),
-  });
+  let response;
+  try {
+    response = await fetchImpl(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST", headers: { "Content-Type": "application/json", ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}) },
+      body: JSON.stringify({ model: config.model, messages, temperature: Number(config.temperature), max_tokens: Number(config.maxTokens), stream: false }),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch {
+    throw new Error(`Нет соединения с OmniRoute по адресу ${config.baseUrl}. Дождись запуска встроенного шлюза.`);
+  }
   const body = await response.text();
   if (!response.ok) throw new Error(`OmniRoute ${response.status}: ${body.slice(0, 300)}`);
   if ((response.headers.get("content-type") || "").includes("text/event-stream") || body.startsWith("data:")) return parseSse(body);

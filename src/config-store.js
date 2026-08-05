@@ -8,6 +8,7 @@ function mergeConfig(value = {}) {
     llm: { ...DEFAULT_CONFIG.llm, ...(value.llm || {}) },
     business: { ...DEFAULT_CONFIG.business, ...(value.business || {}) },
     automation: { ...DEFAULT_CONFIG.automation, ...(value.automation || {}) },
+    chats: { ...DEFAULT_CONFIG.chats, ...(value.chats || {}) },
   };
 }
 class ConfigStore {
