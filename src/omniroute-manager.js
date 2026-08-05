@@ -33,10 +33,13 @@ class OmniRouteManager {
     const cli = app.isPackaged ? path.join(process.resourcesPath, "omniroute-runner.cjs") : require.resolve("omniroute/bin/omniroute.mjs");
     fs.mkdirSync(this.dataDir, { recursive: true });
     fs.appendFileSync(this.logFile, `\n[${new Date().toISOString()}] Starting ${cli}\n`);
+    const esbuildBinary = app.isPackaged && process.platform === "win32"
+      ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules", "@esbuild", "win32-x64", "esbuild.exe")
+      : undefined;
     this.process = spawn(process.execPath, [cli, "serve", "--no-open", "--no-tray", "--port", String(this.port)], {
       cwd: path.dirname(cli),
       windowsHide: true,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", DATA_DIR: this.dataDir, PORT: String(this.port), DASHBOARD_PORT: String(this.port), API_PORT: String(this.port), OMNIROUTE_NO_UPDATE_NOTIFIER: "1", OMNIROUTE_CLI_SKIP_REPO_ENV: "1" },
+      env: { ...process.env, ...(esbuildBinary ? { ESBUILD_BINARY_PATH: esbuildBinary } : {}), ELECTRON_RUN_AS_NODE: "1", DATA_DIR: this.dataDir, PORT: String(this.port), DASHBOARD_PORT: String(this.port), API_PORT: String(this.port), OMNIROUTE_NO_UPDATE_NOTIFIER: "1", OMNIROUTE_CLI_SKIP_REPO_ENV: "1" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     this.owned = true;
