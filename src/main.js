@@ -6,6 +6,13 @@ const { buildMessages } = require("./prompt");
 const { requestCompletion } = require("./llm-client");
 const { OmniRouteManager } = require("./omniroute-manager");
 let mainWindow, store, config, telegram, omniroute;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+app.on("second-instance", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show(); mainWindow.focus();
+});
 function emit(type, data) { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("app:event", { type, data }); }
 function safeConfig(value) { return { ...value, telegram: { ...value.telegram, session: value.telegram.session ? "__saved__" : "" } }; }
 function createWindow() {

@@ -1,11 +1,14 @@
 const path = require("node:path");
+const fs = require("node:fs");
 const { spawn } = require("node:child_process");
+const { app } = require("electron");
 
 class OmniRouteManager {
   constructor({ dataDir, emit, port = 20128 }) {
     this.dataDir = dataDir;
     this.emit = emit;
     this.port = port;
+    this.logFile = path.join(dataDir, "omniroute.log");
     this.process = null;
     this.owned = false;
   }
@@ -27,8 +30,9 @@ class OmniRouteManager {
       this.emit("omniroute-status", await this.status());
       return this.status();
     }
-    const resolvedCli = require.resolve("omniroute/bin/omniroute.mjs");
-    const cli = resolvedCli.includes("app.asar") ? resolvedCli.replace("app.asar", "app.asar.unpacked") : resolvedCli;
+    const cli = app.isPackaged ? path.join(process.resourcesPath, "omniroute-runner.cjs") : require.resolve("omniroute/bin/omniroute.mjs");
+    fs.mkdirSync(this.dataDir, { recursive: true });
+    fs.appendFileSync(this.logFile, `\n[${new Date().toISOString()}] Starting ${cli}\n`);
     this.process = spawn(process.execPath, [cli, "serve", "--no-open", "--no-tray", "--port", String(this.port)], {
       cwd: path.dirname(cli),
       windowsHide: true,
@@ -38,11 +42,13 @@ class OmniRouteManager {
     this.owned = true;
     const log = (data) => {
       const text = String(data).replace(/\x1b\[[0-9;]*m/g, "").trim();
+      if (text) fs.appendFileSync(this.logFile, `${text}\n`);
       if (text) this.emit("log", { level: "info", message: `OmniRoute: ${text.split("\n").at(-1)}` });
     };
     this.process.stdout.on("data", log); this.process.stderr.on("data", log);
     this.process.on("error", (error) => {
-      this.emit("log", { level: "error", message: `Не удалось запустить встроенный OmniRoute: ${error.message}` });
+      fs.appendFileSync(this.logFile, `Spawn error: ${error.stack || error.message}\n`);
+      this.emit("log", { level: "error", message: `Не удалось запустить встроенный OmniRoute: ${error.message}. Журнал: ${this.logFile}` });
       this.process = null; this.owned = false;
     });
     this.process.on("exit", (code) => { this.process = null; this.owned = false; this.emit("omniroute-status", { running: false, owned: false, dashboardUrl: this.dashboardUrl, apiUrl: this.apiUrl }); if (code) this.emit("log", { level: "error", message: `OmniRoute остановлен с кодом ${code}` }); });
@@ -52,7 +58,7 @@ class OmniRouteManager {
       if (!this.process) break;
       await new Promise((resolve) => setTimeout(resolve, 750));
     }
-    throw new Error("Встроенный OmniRoute не запустился. Проверь журнал приложения.");
+    throw new Error(`Встроенный OmniRoute не запустился. Журнал: ${this.logFile}`);
   }
 
   async stop() {
