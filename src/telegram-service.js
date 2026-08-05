@@ -63,6 +63,16 @@ class TelegramService {
     if (!known.has(peerKey)) return Boolean(config.chats.allowNewChats);
     return config.chats.mode === "deny" ? !selected.has(peerKey) : selected.has(peerKey);
   }
+  boundHistory(items, maxChars) {
+    const history = [...items].reverse().map((item) => ({ text: item.message, outgoing: Boolean(item.out) })).filter((item) => String(item.text || "").trim());
+    let used = 0; const bounded = [];
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      const size = String(history[index].text || "").length;
+      if (bounded.length && used + size > maxChars) break;
+      bounded.unshift(history[index]); used += size;
+    }
+    return bounded;
+  }
   async onMessage(event) {
     const message = event.message;
     if (!message?.peerId || !message.isPrivate) return;
@@ -89,11 +99,9 @@ class TelegramService {
       if (!config.automation.enabled || (this.manualPauses.get(peerKey) || 0) > Date.now()) return;
       const limit = config.chats.historyAll ? 500 : Math.max(1, Number(config.chats.historyLimit) || 12);
       const items = await this.client.getMessages(peer, { limit });
-      let history = [...items].reverse().map((item) => ({ text: item.message, outgoing: Boolean(item.out) }));
       const maxChars = Number(config.chats.maxContextChars) || 60000;
-      let used = 0; const bounded = [];
-      for (let index = history.length - 1; index >= 0; index -= 1) { const size = String(history[index].text || "").length; if (bounded.length && used + size > maxChars) break; bounded.unshift(history[index]); used += size; }
-      history = bounded;
+      const history = this.boundHistory(items, maxChars);
+      this.emit("log", { level: "info", message: `Диалог ${peerKey}: модели передано ${history.length} сообщений из истории` });
       const answer = await requestCompletion(config.llm, buildMessages(config, history)); if (!answer) return;
       this.sendingPeers.add(peerKey); await this.client.sendMessage(peer, { message: answer }); setTimeout(() => this.sendingPeers.delete(peerKey), 2000);
       this.emit("log", { level: "success", message: `Автоответ отправлен в диалог ${peerKey}` });
