@@ -68,7 +68,7 @@ class TelegramService {
     if (!message?.peerId || !message.isPrivate) return;
     const peerKey = String(message.chatId || message.senderId || ""); if (!peerKey) return;
     if (message.out) {
-      if (!this.sendingPeers.has(peerKey)) {
+      if (!this.sendingPeers.has(peerKey) && this.getConfig().automation.manualPauseEnabled) {
         const minutes = Number(this.getConfig().automation.manualPauseMinutes) || 30;
         this.manualPauses.set(peerKey, Date.now() + minutes * 60_000);
         this.emit("log", { level: "info", message: `Диалог ${peerKey}: пауза после ручного ответа` });
